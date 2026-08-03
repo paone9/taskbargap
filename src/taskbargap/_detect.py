@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 from . import _win32
 from ._geometry import BUTTON_FRACTION, gap_span, is_on_taskbar
@@ -48,7 +47,7 @@ class Gap:
         return self.bottom - self.top
 
 
-def _button_edge(tray: int, tray_rect: Tuple[int, int, int, int]) -> Optional[int]:
+def _button_edge(tray: int, tray_rect: tuple[int, int, int, int]) -> int | None:
     """Right edge of the app-button strip, or None if nothing measurable exists.
 
     Every candidate is sanity-checked against the taskbar's own rect rather than
@@ -72,7 +71,7 @@ def _button_edge(tray: int, tray_rect: Tuple[int, int, int, int]) -> Optional[in
     return None
 
 
-def find_gap(fraction: float = BUTTON_FRACTION) -> Optional[Gap]:
+def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
     """Detect the empty taskbar gap. Returns a `Gap`, or `None` if there isn't one.
 
     `None` covers every "no gap right now" state: no taskbar (Explorer

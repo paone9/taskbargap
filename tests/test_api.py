@@ -43,8 +43,8 @@ def test_import_does_not_bind_user32():
 
 class TestGap:
     def make(self, **kw):
-        base = dict(left=788, right=3404, top=2076, bottom=2160,
-                    scale=1.75, monitor=1234, measured=True)
+        base = {"left": 788, "right": 3404, "top": 2076, "bottom": 2160,
+                "scale": 1.75, "monitor": 1234, "measured": True}
         base.update(kw)
         return taskbargap.Gap(**base)
 

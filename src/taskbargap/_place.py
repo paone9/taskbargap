@@ -1,8 +1,6 @@
 """Move an existing window into the gap as a top-most tool window."""
 from __future__ import annotations
 
-from typing import Optional
-
 from . import _win32
 from ._detect import Gap, find_gap
 from ._geometry import fit
@@ -20,9 +18,9 @@ def place(
     align: str = "right",
     margin: int = 12,
     min_width: int = 160,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
-    gap: Optional[Gap] = None,
+    width: int | None = None,
+    height: int | None = None,
+    gap: Gap | None = None,
     nonblocking: bool = False,
 ) -> bool:
     """Size and position `hwnd` inside the taskbar gap as a top-most tool window.

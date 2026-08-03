@@ -36,7 +36,7 @@ def restored_explorer():
     """Whatever the test does, leave a working taskbar behind."""
     yield
     if not _win32.find_window("Shell_TrayWnd"):
-        subprocess.Popen(["explorer.exe"])          # noqa: S603 - fixed argv
+        subprocess.Popen(["explorer.exe"])
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline and not _win32.find_window("Shell_TrayWnd"):
             time.sleep(0.5)
@@ -67,7 +67,7 @@ def test_survives_an_explorer_restart(restored_explorer):
         observed.append(taskbargap.find_gap())      # must never raise
 
     try:
-        subprocess.run(["taskkill", "/f", "/im", "explorer.exe"],  # noqa: S603,S607
+        subprocess.run(["taskkill", "/f", "/im", "explorer.exe"],
                        capture_output=True, text=True, check=False)
 
         deadline = time.monotonic() + OUTAGE_BUDGET
@@ -76,7 +76,7 @@ def test_survives_an_explorer_restart(restored_explorer):
             time.sleep(0.1)
 
         if not _win32.find_window("Shell_TrayWnd"):
-            subprocess.Popen(["explorer.exe"])      # noqa: S603 - fixed argv
+            subprocess.Popen(["explorer.exe"])
 
         deadline = time.monotonic() + RECOVERY_BUDGET
         while time.monotonic() < deadline:
@@ -101,8 +101,7 @@ def test_survives_an_explorer_restart(restored_explorer):
         tray_left = _win32.window_rect(after_tray)[0]
         bogus = [g for g in observed
                  if g is not None and g.measured and g.left <= tray_left]
-        assert not bogus, "reported a measured gap starting at the Start button: %r" % (
-            bogus[:3],)
+        assert not bogus, f"reported a measured gap starting at the Start button: {bogus[:3]!r}"
 
         # 3. The watcher lived through it and re-fitted to the NEW taskbar.
         assert watcher.running is True

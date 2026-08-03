@@ -6,7 +6,7 @@ from taskbargap._geometry import ALIGNMENTS, fit, gap_span, is_on_taskbar
 # The real taskbar this was developed against: 3840x2160 at 175%, classic shell.
 # Shell_TrayWnd (0,2076)-(3840,2160), ReBarWindow32 right edge 788,
 # TrayNotifyWnd left edge 3404.
-REAL = dict(tray_left=0, tray_right=3840, notify_left=3404, button_right=788)
+REAL = {"tray_left": 0, "tray_right": 3840, "notify_left": 3404, "button_right": 788}
 
 
 class TestIsOnTaskbar:

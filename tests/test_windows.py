@@ -30,7 +30,7 @@ REQUIRE_SHELL = os.environ.get("TASKBARGAP_REQUIRE_SHELL") == "1"
 
 def _no_shell(reason):
     if REQUIRE_SHELL:
-        pytest.fail("TASKBARGAP_REQUIRE_SHELL=1, but %s" % reason)
+        pytest.fail(f"TASKBARGAP_REQUIRE_SHELL=1, but {reason}")
     pytest.skip(reason)
 
 
@@ -62,7 +62,7 @@ def tk_root():
     try:
         root = tk.Tk()
     except tk.TclError as exc:                     # no interactive desktop
-        _no_shell("no desktop session for tkinter: %s" % exc)
+        _no_shell(f"no desktop session for tkinter: {exc}")
     root.withdraw()
     try:
         yield root
@@ -84,7 +84,7 @@ def fits(gap):
     margin = 12
     avail = gap.width - 2 * margin
     if avail < 40:
-        _no_shell("gap is %dpx wide - no room for any window at all" % max(avail, 0))
+        _no_shell(f"gap is {max(avail, 0)}px wide - no room for any window at all")
     width = min(200, avail)
     return {"margin": margin, "width": width, "min_width": min(80, width)}
 
@@ -174,7 +174,7 @@ def _child_view(mode):
     out = subprocess.run([sys.executable, "-c", _CHILD, mode], capture_output=True,
                          text=True, check=True).stdout.split()
     if out[1] == "None":
-        _no_shell("no taskbar gap in the %s child process" % mode)
+        _no_shell(f"no taskbar gap in the {mode} child process")
     return {"awareness": int(out[0]), "scale": float(out[1]),
             "top": float(out[2]), "system_scale": float(out[3])}
 
@@ -246,8 +246,8 @@ def test_scale_ignores_the_monitor_dpi_when_the_process_cannot_use_it():
     assert naive != pytest.approx(system), (
         "this machine stopped being mixed-scale mid-test; nothing was proven")
     assert rule == pytest.approx(system), (
-        "scale followed the monitor (%.2f) instead of the space the process "
-        "addresses (%.2f)" % (naive, system))
+        f"scale followed the monitor ({naive:.2f}) instead of the space the process "
+        f"addresses ({system:.2f})")
 
 
 def test_the_awareness_modes_describe_the_same_taskbar():
@@ -391,9 +391,8 @@ def test_watcher_loop_does_not_block_on_an_unpumped_window(gap, window, fits, mo
 
 def test_watcher_rejects_double_start(window):
     watcher = taskbargap.GapWatcher(window, interval=0.1)
-    with watcher:
-        with pytest.raises(RuntimeError):
-            watcher.start()
+    with watcher, pytest.raises(RuntimeError):
+        watcher.start()
     watcher.stop()      # idempotent
 
 

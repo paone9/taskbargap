@@ -8,8 +8,6 @@ All coordinates are physical pixels.
 """
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 #: Fallback for the app-button edge when a shell hosts no measurable button
 #: window: assume the buttons end 30% of the way across the taskbar. Inherited
 #: from the app this code came from, where it shipped. Stock Windows 11 (26200)
@@ -21,8 +19,8 @@ ALIGNMENTS = ("left", "center", "right")
 
 
 def is_on_taskbar(
-    rect: Optional[Tuple[int, int, int, int]],
-    tray_rect: Tuple[int, int, int, int],
+    rect: tuple[int, int, int, int] | None,
+    tray_rect: tuple[int, int, int, int],
 ) -> bool:
     """Is `rect` a live window rect that actually sits on this taskbar?
 
@@ -52,10 +50,10 @@ def is_on_taskbar(
 def gap_span(
     tray_left: int,
     tray_right: int,
-    notify_left: Optional[int] = None,
-    button_right: Optional[int] = None,
+    notify_left: int | None = None,
+    button_right: int | None = None,
     fraction: float = BUTTON_FRACTION,
-) -> Optional[Tuple[int, int, bool]]:
+) -> tuple[int, int, bool] | None:
     """Compute the empty horizontal span of the taskbar.
 
     `tray_left`/`tray_right` bound the whole taskbar. `notify_left` is the left
@@ -92,8 +90,8 @@ def fit(
     align: str = "right",
     margin: int = 12,
     min_width: int = 160,
-    width: Optional[int] = None,
-) -> Optional[Tuple[int, int]]:
+    width: int | None = None,
+) -> tuple[int, int] | None:
     """Compute `(x, width)` for a window inside the span `[gap_left, gap_right)`.
 
     A `margin` of clear space is kept at each end. `width` is the desired width;
@@ -105,13 +103,13 @@ def fit(
     than placement.
     """
     if align not in ALIGNMENTS:
-        raise ValueError("align must be one of %r, got %r" % (ALIGNMENTS, align))
+        raise ValueError(f"align must be one of {ALIGNMENTS!r}, got {align!r}")
     if margin < 0:
-        raise ValueError("margin must be >= 0, got %r" % (margin,))
+        raise ValueError(f"margin must be >= 0, got {margin!r}")
     if min_width < 0:
-        raise ValueError("min_width must be >= 0, got %r" % (min_width,))
+        raise ValueError(f"min_width must be >= 0, got {min_width!r}")
     if width is not None and width <= 0:
-        raise ValueError("width must be > 0 or None, got %r" % (width,))
+        raise ValueError(f"width must be > 0 or None, got {width!r}")
 
     span = gap_right - gap_left
     avail = span - 2 * margin

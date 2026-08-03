@@ -15,7 +15,6 @@ from __future__ import annotations
 import ctypes
 import logging
 import sys
-from typing import Optional, Tuple
 
 log = logging.getLogger("taskbargap")
 
@@ -81,7 +80,7 @@ def user32():
         if not sys.platform.startswith("win"):
             raise NotWindowsError(
                 "taskbargap is Windows-only: it is built on Win32 shell windows "
-                "(running on %r)" % (sys.platform,))
+                f"(running on {sys.platform!r})")
         u = ctypes.WinDLL("user32", use_last_error=True)
         _annotate(u)
         _user32 = u
@@ -175,7 +174,7 @@ def find_descendant(parent: int, class_name: str, max_depth: int = 3) -> int:
     return 0
 
 
-def window_rect(hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+def window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     """`(left, top, right, bottom)` in physical px, or None if the call fails."""
     if not hwnd:
         return None
@@ -197,7 +196,7 @@ def monitor_from_window(hwnd: int) -> int:
     return _handle(user32().MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST))
 
 
-def monitor_rect(hmonitor: int) -> Optional[Tuple[int, int, int, int]]:
+def monitor_rect(hmonitor: int) -> tuple[int, int, int, int] | None:
     if not hmonitor:
         return None
     mi = MONITORINFO()
@@ -233,7 +232,7 @@ def process_is_dpi_aware() -> bool:
     return process_dpi_awareness() != DPI_AWARENESS_UNAWARE
 
 
-def window_scale(hwnd: int, fallback: Optional[float] = None) -> float:
+def window_scale(hwnd: int, fallback: float | None = None) -> float:
     """DPI factor of the monitor `hwnd` is on, *as this process sees it*.
 
     The subtlety: `GetDpiForWindow` answers for the **window**, and the taskbar

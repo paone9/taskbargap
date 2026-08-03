@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
+
+from typing_extensions import Self
 
 from . import _win32
 from ._detect import Gap, find_gap
@@ -50,13 +52,13 @@ class GapWatcher:
         align: str = "right",
         margin: int = 12,
         min_width: int = 160,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         interval: float = 1.0,
-        on_change: Optional[Callable[[Gap], None]] = None,
+        on_change: Callable[[Gap], None] | None = None,
     ) -> None:
         if interval <= 0:
-            raise ValueError("interval must be > 0, got %r" % (interval,))
+            raise ValueError(f"interval must be > 0, got {interval!r}")
         self.hwnd = hwnd
         self.align = align
         self.margin = margin
@@ -65,18 +67,18 @@ class GapWatcher:
         self.height = height
         self.interval = interval
         self.on_change = on_change
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         # One Event per run, owned by the thread that run started. A shared Event
         # could be cleared by a restart while an older thread was still inside a
         # tick, which would revive it and leave two loops fighting over the window.
-        self._stop: Optional[threading.Event] = None
-        self._gap: Optional[Gap] = None
-        self._last_error: Optional[BaseException] = None
+        self._stop: threading.Event | None = None
+        self._gap: Gap | None = None
+        self._last_error: BaseException | None = None
 
     # --- state ---------------------------------------------------------------
 
     @property
-    def gap(self) -> Optional[Gap]:
+    def gap(self) -> Gap | None:
         """The gap as of the last time it changed; None until the first tick."""
         return self._gap
 
@@ -85,7 +87,7 @@ class GapWatcher:
         return self._thread is not None and self._thread.is_alive()
 
     @property
-    def last_error(self) -> Optional[BaseException]:
+    def last_error(self) -> BaseException | None:
         """The last exception the loop swallowed, so a caller can surface it.
 
         The loop keeps going after an error (a transient Win32 failure during an
@@ -120,7 +122,7 @@ class GapWatcher:
             target=self._loop, args=(stop,), name="taskbargap-watcher", daemon=True)
         self._thread.start()
 
-    def stop(self, timeout: Optional[float] = 5.0) -> bool:
+    def stop(self, timeout: float | None = 5.0) -> bool:
         """Ask the thread to finish and wait for it. Safe to call when stopped.
 
         Returns whether it actually finished. A thread that outlives `timeout`
@@ -142,7 +144,7 @@ class GapWatcher:
         self._thread = None
         return True
 
-    def __enter__(self) -> "GapWatcher":
+    def __enter__(self) -> Self:
         self.start()
         return self
 
