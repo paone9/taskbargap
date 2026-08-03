@@ -1,0 +1,4 @@
+# Normalise to LF in the repository, whatever the checkout platform does. CI
+# runs on both Linux and Windows, and mixed endings turn into phantom diffs.
+* text=auto eol=lf
+*.png binary

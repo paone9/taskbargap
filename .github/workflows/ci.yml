@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Lint and security on Linux, which doubles as the proof that the package
+  # imports and its geometry is testable off Windows (the Win32 tests skip).
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install package + dev tools
+        run: python -m pip install .[dev]
+      - name: Compile
+        run: python -m compileall src
+      - name: Lint (ruff)
+        run: python -m ruff check .
+      - name: Security scan (bandit)
+        run: python -m bandit -r . --severity-level medium
+      - name: Portable tests (Win32 suite skips here)
+        run: python -m pytest -q -rs
+
+  # The real thing: the Win32 suite against the live shell. Anything that needs
+  # a taskbar or a desktop session skips itself when the runner hasn't got one,
+  # so a green run here is not by itself proof that placement was exercised -
+  # read the skip report, and see the strict step below.
+  tests:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # the floor promised in pyproject, and a current release
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package + dev tools
+        run: python -m pip install .[dev]
+      - name: Tests (pytest)
+        run: python -m pytest -q -rs
+
+      # The same suite with environment skips turned into failures, because the
+      # step above cannot distinguish "everything passed" from "everything
+      # skipped itself". These runners do have a desktop and a taskbar - the
+      # whole shell suite passes on them - so this is a gate: if a future runner
+      # image loses that, Windows coverage silently vanishes, and a red build is
+      # the only thing that would tell you.
+      - name: Shell tests must actually run
+        env:
+          TASKBARGAP_REQUIRE_SHELL: "1"
+        run: python -m pytest -q tests/test_windows.py
