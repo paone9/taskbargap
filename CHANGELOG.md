@@ -4,10 +4,11 @@ All notable changes to `taskbargap`. Versions follow [semantic
 versioning](https://semver.org), with the pre-1.0 caveat that the API can still
 change between minor versions.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-08-03)
 
-First working version, extracted from a shipping Windows taskbar widget. Built
-and tested, but not yet published to PyPI.
+First release. The taskbar detection and placement code out of a shipping
+Windows widget, packaged on its own. Alpha: the API can still change, and the
+validation table in `DESIGN.md` is specific about what has and hasn't been run.
 
 ### Added
 

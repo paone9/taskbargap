@@ -6,7 +6,7 @@ reuse it. The hard parts had already been proven in a real application before th
 package existed, which is why the detection and placement paths are more careful
 than a first draft would be.
 
-**Status:** v0.1.0 built and tested. Not published to PyPI yet.
+**Status:** v0.1.0 on PyPI, alpha. The API can still change inside 0.x.
 
 ## The problem being solved
 

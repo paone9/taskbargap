@@ -1,6 +1,7 @@
 # taskbargap
 
 [![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d6)](#honest-limitations)
+[![PyPI](https://img.shields.io/pypi/v/taskbargap)](https://pypi.org/project/taskbargap/)
 [![CI](https://github.com/paone9/taskbargap/actions/workflows/ci.yml/badge.svg)](https://github.com/paone9/taskbargap/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/paone9/taskbargap/actions/workflows/codeql.yml/badge.svg)](https://github.com/paone9/taskbargap/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/paone9/taskbargap/badge)](https://scorecard.dev/viewer/?uri=github.com/paone9/taskbargap)
@@ -23,18 +24,17 @@ grabbing a taskbar button of its own. This library does that, and nothing else.
 
 ## Install
 
-**Not published yet.** v0.1.0 is built and tested, but it isn't on PyPI, so
-`pip install taskbargap` does not work today. From a clone:
-
 ```
-pip install .
+pip install taskbargap
 ```
 
 The only dependency is the standard library (`ctypes`). It writes nothing at all:
 no files, no registry keys, no config, no logs. It makes no network calls. See
 [SECURITY.md](SECURITY.md) for the complete list of Win32 calls it makes.
 
-Before you rely on it, read [what has and hasn't been validated](DESIGN.md).
+This is an alpha, and it says so on the tin. Before you rely on it, read [what
+has and hasn't been validated](DESIGN.md), which is specific about the
+configurations it has never run on.
 
 ## Quickstart
 
