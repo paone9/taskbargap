@@ -1,7 +1,7 @@
 # taskbargap
 
 [![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d6)](#honest-limitations)
-[![PyPI](https://img.shields.io/pypi/v/taskbargap)](https://pypi.org/project/taskbargap/)
+[![PyPI](https://img.shields.io/pypi/v/taskbargap?logo=pypi&logoColor=white)](https://pypi.org/project/taskbargap/)
 [![CI](https://github.com/paone9/taskbargap/actions/workflows/ci.yml/badge.svg)](https://github.com/paone9/taskbargap/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/paone9/taskbargap/actions/workflows/codeql.yml/badge.svg)](https://github.com/paone9/taskbargap/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/paone9/taskbargap/badge)](https://scorecard.dev/viewer/?uri=github.com/paone9/taskbargap)
