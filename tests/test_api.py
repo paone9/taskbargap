@@ -18,6 +18,30 @@ def test_public_api_is_exactly_what_is_documented():
         assert hasattr(taskbargap, name), name
 
 
+def test_importing_it_pulls_in_nothing_third_party():
+    """The zero-dependency claim in the README and SECURITY.md, enforced.
+
+    A ruff autofix once rewrote a return annotation to `typing.Self` and, because
+    the floor is 3.10, quietly added `typing_extensions` to a package that
+    advertises no dependencies. It passed locally, where that module happened to
+    be installed, and only failed on a clean CI runner. This checks the actual
+    import graph instead of trusting either.
+    """
+    code = (
+        "import sys;"
+        " before = set(sys.modules);"
+        " import taskbargap;"
+        " roots = {m.split('.')[0] for m in set(sys.modules) - before};"
+        " print(','.join(sorted(r for r in roots"
+        "                       if r not in sys.stdlib_module_names"
+        "                       and not r.startswith('_')"
+        "                       and r != 'taskbargap')))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert out == "", f"importing taskbargap pulled in third-party modules: {out}"
+
+
 def test_ships_a_py_typed_marker():
     # PEP 561: without it, consumers' type checkers ignore every annotation here.
     assert (pathlib.Path(taskbargap.__file__).parent / "py.typed").is_file()

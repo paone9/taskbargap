@@ -5,8 +5,6 @@ import logging
 import threading
 from collections.abc import Callable
 
-from typing_extensions import Self
-
 from . import _win32
 from ._detect import Gap, find_gap
 from ._place import place
@@ -144,7 +142,10 @@ class GapWatcher:
         self._thread = None
         return True
 
-    def __enter__(self) -> Self:
+    # Annotated by name rather than `typing.Self`, which needs 3.11 or a
+    # typing_extensions dependency. This package has no dependencies and the
+    # floor is 3.10, so the postponed annotation stays a plain string.
+    def __enter__(self) -> GapWatcher:  # noqa: PYI034
         self.start()
         return self
 
