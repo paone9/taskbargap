@@ -363,7 +363,16 @@ def enable_dpi_awareness() -> bool:
     return process_is_dpi_aware()
 
 
-_ENUM_WINDOWS = ctypes.WINFUNCTYPE(_BOOL, _HWND, ctypes.c_ssize_t)
+#: Built on first use, never at import: `ctypes.WINFUNCTYPE` does not exist off
+#: Windows, and this module must stay importable everywhere.
+_enum_windows_proc = None
+
+
+def _enum_windows_type():
+    global _enum_windows_proc
+    if _enum_windows_proc is None:
+        _enum_windows_proc = ctypes.WINFUNCTYPE(_BOOL, _HWND, ctypes.c_ssize_t)
+    return _enum_windows_proc
 
 
 def _is_cloaked(hwnd: int) -> bool:
@@ -416,5 +425,5 @@ def taskbar_button_count() -> int:
         count += 1
         return 1
 
-    u.EnumWindows(_ENUM_WINDOWS(_visit), 0)
+    u.EnumWindows(_enum_windows_type()(_visit), 0)
     return count
