@@ -1,7 +1,14 @@
 """Pure placement arithmetic: runs on any OS, no Windows, no windows."""
 import pytest
 
-from taskbargap._geometry import ALIGNMENTS, fit, gap_span, is_on_taskbar
+from taskbargap._geometry import (
+    ALIGNMENTS,
+    estimate_button_edge,
+    fit,
+    gap_span,
+    is_on_taskbar,
+    strip_can_hold,
+)
 
 # The real taskbar this was developed against: 3840x2160 at 175%, classic shell.
 # Shell_TrayWnd (0,2076)-(3840,2160), ReBarWindow32 right edge 788,
@@ -137,3 +144,50 @@ class TestFit:
             fit(0, 1000, min_width=-1)
         with pytest.raises(ValueError):
             fit(0, 1000, width=0)
+
+
+class TestStripCredibility:
+    """The reported button strip can be too narrow for the buttons it holds.
+
+    Measured on Windows 11 at 250% with nine windows open: the strip claimed
+    878 physical pixels, which is 39 logical pixels per button, when the
+    narrowest a button gets is about 44. Trusting it put the gap's left edge on
+    top of four real icons.
+    """
+
+    def test_the_real_failure_is_rejected(self):
+        assert strip_can_hold(140, 1018, 9, 2.5) is False
+
+    def test_a_strip_with_room_is_accepted(self):
+        assert strip_can_hold(140, 3000, 9, 2.5) is True
+
+    def test_exactly_at_the_floor_is_accepted(self):
+        # 9 buttons x 40 logical x 2.5 = 900 exactly: possible, so not rejected.
+        assert strip_can_hold(0, 900, 9, 2.5) is True
+        assert strip_can_hold(0, 899, 9, 2.5) is False
+
+    @pytest.mark.parametrize("count,scale", [(0, 2.5), (-1, 2.5), (9, 0)])
+    def test_no_evidence_means_no_accusation(self, count, scale):
+        # With nothing to contradict the strip, it stands. The check exists to
+        # catch impossibility, not to second-guess on principle.
+        assert strip_can_hold(140, 200, count, scale) is True
+
+    def test_a_hidpi_strip_is_judged_in_its_own_units(self):
+        # 9 buttons need 360 logical px; the same pixel width passes at 1x and
+        # fails at 2x, which is the whole point of scaling the threshold.
+        assert strip_can_hold(0, 400, 9, 1.0) is True
+        assert strip_can_hold(0, 400, 9, 2.0) is False
+
+
+class TestEstimateButtonEdge:
+    def test_matches_the_observed_layout(self):
+        # The machine this was found on: strip starts at 140, nine windows,
+        # 250%. The estimate lands where the icons visibly end.
+        assert estimate_button_edge(140, 9, 2.5) == 1130
+
+    def test_scales_with_dpi(self):
+        assert estimate_button_edge(0, 10, 1.0) == 440
+        assert estimate_button_edge(0, 10, 2.0) == 880
+
+    def test_no_buttons_leaves_the_edge_alone(self):
+        assert estimate_button_edge(140, 0, 2.5) == 140

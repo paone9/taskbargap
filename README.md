@@ -109,15 +109,25 @@ only in per-monitor mode that you get real screen pixels and an unscaled window.
 
 ## Honest limitations
 
-- **When the button strip can't be measured.** The app-button edge is read from the
-  taskbar's own `ReBarWindow32` and `MSTaskListWClass` windows. On stock Windows 11
-  (build 26200) those exist and track the buttons in both left-aligned and centred
-  layouts, measured here both ways, so the common cases are the measured ones.
-  Where a shell doesn't host them, `find_gap()` falls back to assuming the buttons
-  end 30% across the bar, and sets `measured=False`. Be clear-eyed about that
-  fallback. It is a guess inherited from the app this code was extracted from, it
-  has never run on a real machine, and it can name a left edge that still has
-  buttons on it. Check `Gap.measured` if covering a button would matter to you.
+- **The app-button edge cannot always be measured, and `measured=False` is not a
+  safe edge.** This is the limitation that matters most, so it goes first. The
+  edge is read from the taskbar's own `ReBarWindow32` and `MSTaskListWClass`
+  windows. On Windows 11 that rect can be **wrong rather than missing**: with
+  enough apps running it reports a width too narrow to hold the buttons it
+  contains, so the gap's left edge lands on top of real, clickable icons.
+  Measured on a 250% display with nine windows open, the strip claimed a width
+  of 39 logical pixels per button when the narrowest a button gets is about 44.
+  The real buttons live in an undocumented XAML subtree that has no structural
+  relationship to the legacy control, so there is nothing dependable to read.
+
+  What the library does about it: the reported edge is checked against the
+  number of windows that must own a button, and when the arithmetic is
+  impossible you get `measured=False` plus the more conservative of the two
+  estimates. **That is honesty, not safety.** A `measured=False` edge is still a
+  guess and may still overlap buttons. If covering an icon would be unacceptable
+  for your app, treat `measured=False` as "don't draw here" rather than "draw
+  here carefully".
+
 - **Rects are sanity-checked, so detection degrades rather than lies.** A taskbar
   child reporting a dead or off-bar rectangle, which happens while Explorer is
   restarting, is ignored rather than believed, and you get the heuristic with

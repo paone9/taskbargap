@@ -4,7 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import _win32
-from ._geometry import BUTTON_FRACTION, gap_span, is_on_taskbar
+from ._geometry import (
+    BUTTON_FRACTION,
+    estimate_button_edge,
+    gap_span,
+    is_on_taskbar,
+    strip_can_hold,
+)
 
 #: The taskbar itself. (Secondary monitors get `Shell_SecondaryTrayWnd`; v0.1
 #: reads the primary taskbar only. See DESIGN.md.)
@@ -26,9 +32,14 @@ class Gap:
     that scale window *position* by DPI (pywebview, WinForms) need the logical
     value: `x_logical = round(gap.left / gap.scale)`.
 
-    `measured` is True when the app-button edge was read from a real window, and
-    False when it came from the fallback heuristic. Check it before trusting the
-    left edge not to sit on top of the buttons.
+    `measured` is True only when the app-button edge was read from a real window
+    *and* that reading survived corroboration against the number of windows that
+    must own a button. It is False when the edge is a guess.
+
+    False does not mean "unsafe" and True does not mean "safe": it means the
+    library is telling you which of the two it is. A guessed edge may still sit
+    on top of buttons, because there is no reliable way to measure them on every
+    shell. Treat False as "draw here at your own risk, or don't draw".
     """
     left: int
     right: int
@@ -47,19 +58,14 @@ class Gap:
         return self.bottom - self.top
 
 
-def _button_edge(tray: int, tray_rect: tuple[int, int, int, int]) -> int | None:
-    """Right edge of the app-button strip, or None if nothing measurable exists.
+def _button_strip(tray: int, tray_rect: tuple[int, int, int, int]):
+    """Rect of the app-button strip, or None if no window will admit to one.
 
     Every candidate is sanity-checked against the taskbar's own rect rather than
-    trusted on sight: the shell keeps stale and hidden button windows around
-    (this machine has an invisible `MSTaskListWClass`), and during an Explorer
-    restart a live handle can still report a zero rect. Candidates that don't
-    check out are skipped, so a good window later in the list still wins.
-
-    None means "no shell window would tell us", which sends the caller to the
-    heuristic. Stock Windows 11 (26200) does host these windows and moves them
-    with the buttons in both left and centred layouts, so on it the answer is
-    measured either way.
+    trusted on sight: the shell keeps stale and hidden button windows around,
+    and during an Explorer restart a live handle can still report a zero rect.
+    Candidates that don't check out are skipped, so a good window later in the
+    list still wins.
     """
     for cls in BUTTON_CLASSES:
         hwnd = _win32.find_child(tray, cls) or _win32.find_descendant(tray, cls)
@@ -67,8 +73,31 @@ def _button_edge(tray: int, tray_rect: tuple[int, int, int, int]) -> int | None:
             continue
         rect = _win32.window_rect(hwnd)
         if is_on_taskbar(rect, tray_rect):
-            return rect[2]
+            return rect
     return None
+
+
+def _button_edge(tray: int, tray_rect: tuple[int, int, int, int], scale: float):
+    """Where the app buttons end, and whether that is a measurement or a guess.
+
+    The strip's own window rect is the obvious source, and on Windows 11 it can
+    be wrong: it reports a width too narrow to hold the buttons it contains, so
+    trusting it puts the gap's left edge on top of real, clickable icons. That
+    is worse than not knowing, because it is wrong *confidently*.
+
+    So the reported edge is corroborated against the number of windows that must
+    own a button. When the arithmetic is impossible, the edge is downgraded to a
+    guess: the caller gets `measured=False` and the further right of the two
+    estimates, which is the side that risks a smaller gap rather than a covered
+    button. It is still a guess. It is not a safe edge, only an honest one.
+    """
+    strip = _button_strip(tray, tray_rect)
+    if strip is None:
+        return None, False
+    count = _win32.taskbar_button_count()
+    if strip_can_hold(strip[0], strip[2], count, scale):
+        return strip[2], True
+    return max(strip[2], estimate_button_edge(strip[0], count, scale)), False
 
 
 def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
@@ -99,13 +128,15 @@ def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
     # same sanity check, so a dead tray rect can't push the gap over the clock.
     notify_left = notify_rect[0] if is_on_taskbar(notify_rect, rect) else None
 
-    span = gap_span(tray_l, tray_r, notify_left, _button_edge(tray, rect), fraction)
+    scale = _win32.window_scale(tray)
+    edge, credible = _button_edge(tray, rect, scale)
+    span = gap_span(tray_l, tray_r, notify_left, edge, fraction)
     if span is None:
         return None
     left, right, measured = span
     return Gap(
         left=left, right=right, top=tray_t, bottom=tray_b,
-        scale=_win32.window_scale(tray),
+        scale=scale,
         monitor=_win32.monitor_from_window(tray),
-        measured=measured,
+        measured=measured and credible,
     )

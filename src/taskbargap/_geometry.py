@@ -17,6 +17,17 @@ BUTTON_FRACTION = 0.30
 
 ALIGNMENTS = ("left", "center", "right")
 
+#: Narrowest a Windows 11 taskbar button gets, in logical pixels. Used only to
+#: judge whether a claimed strip width could possibly hold the buttons we know
+#: are running, so it is deliberately below the ~44px they actually occupy: the
+#: test should fire only when the claim is impossible, never when it is merely
+#: tight.
+MIN_BUTTON_WIDTH = 40
+
+#: What a button typically occupies, logical pixels. Used to estimate where the
+#: strip really ends once the reported edge is known to be wrong.
+TYPICAL_BUTTON_WIDTH = 44
+
 
 def is_on_taskbar(
     rect: tuple[int, int, int, int] | None,
@@ -124,3 +135,32 @@ def fit(
     else:
         x = gap_right - margin - w
     return x, w
+
+
+def strip_can_hold(strip_left: int, strip_right: int, button_count: int,
+                   scale: float, min_button: int = MIN_BUTTON_WIDTH) -> bool:
+    """Could a strip this wide really hold `button_count` buttons?
+
+    The app-button container reports its own width, and on Windows 11 that
+    width can stop short of the buttons it contains: measured on a 250% display
+    with nine windows open, it claimed 878 physical pixels, i.e. 39 logical
+    pixels per button, when the narrowest a button gets is about 44.
+
+    `button_count` must be a floor (pinned-but-not-running apps also take
+    slots), and `min_button` sits below the real minimum, so False means the
+    claim is impossible rather than merely tight.
+    """
+    if button_count <= 0 or scale <= 0:
+        return True                      # nothing to contradict
+    return (strip_right - strip_left) >= button_count * min_button * scale
+
+
+def estimate_button_edge(strip_left: int, button_count: int, scale: float,
+                         button_width: int = TYPICAL_BUTTON_WIDTH) -> int:
+    """Where the buttons probably end, when the reported edge is not credible.
+
+    Also a floor, for the same reason: it counts only windows that exist, so
+    pinned apps push the real edge further right. Treat the result as a better
+    guess than the reported edge, never as a measurement.
+    """
+    return strip_left + round(button_count * button_width * scale)

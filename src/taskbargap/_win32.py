@@ -20,7 +20,11 @@ log = logging.getLogger("taskbargap")
 
 # --- constants ---------------------------------------------------------------
 
+GWL_STYLE = -16
 GWL_EXSTYLE = -20
+WS_VISIBLE = 0x10000000
+GW_OWNER = 4
+DWMWA_CLOAKED = 14
 WS_EX_TOPMOST = 0x00000008
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
@@ -106,6 +110,11 @@ def _annotate(u) -> None:
     u.ShowWindow.restype = _BOOL
     u.ShowWindowAsync.argtypes = [_HWND, _INT]
     u.ShowWindowAsync.restype = _BOOL
+    u.EnumWindows.restype = _BOOL
+    u.GetWindowTextLengthW.argtypes = [_HWND]
+    u.GetWindowTextLengthW.restype = _INT
+    u.GetWindow.argtypes = [_HWND, _UINT]
+    u.GetWindow.restype = _HWND
     u.GetWindowLongW.argtypes = [_HWND, _INT]
     u.GetWindowLongW.restype = ctypes.c_int32
     u.SetWindowLongW.argtypes = [_HWND, _INT, ctypes.c_int32]
@@ -352,3 +361,60 @@ def enable_dpi_awareness() -> bool:
     except (AttributeError, OSError):
         pass
     return process_is_dpi_aware()
+
+
+_ENUM_WINDOWS = ctypes.WINFUNCTYPE(_BOOL, _HWND, ctypes.c_ssize_t)
+
+
+def _is_cloaked(hwnd: int) -> bool:
+    """DWM-cloaked windows report visible but are not shown, so they own no
+    taskbar button. Background UWP frames are the common case."""
+    value = ctypes.c_int()
+    try:
+        if ctypes.windll.dwmapi.DwmGetWindowAttribute(
+                ctypes.c_void_p(hwnd), DWMWA_CLOAKED,
+                ctypes.byref(value), ctypes.sizeof(value)) == 0:
+            return value.value != 0
+    except (AttributeError, OSError):
+        pass
+    return False
+
+
+def taskbar_button_count() -> int:
+    """How many windows currently qualify for a taskbar button.
+
+    This is the shell's own rule, applied to the window list: visible, has a
+    title, is not a tool window, and is either unowned or forces a button with
+    WS_EX_APPWINDOW. It is a **floor**, not an exact count: apps pinned to the
+    taskbar but not running also take a slot, and this cannot see those.
+
+    A floor is what the caller needs. It is used to sanity-check the width the
+    app-button strip claims, and a floor that already does not fit proves the
+    claim wrong without ever producing a false accusation.
+    """
+    u = user32()
+    count = 0
+
+    def _visit(hwnd, _lparam):
+        nonlocal count
+        handle = _handle(hwnd)
+        if not u.IsWindowVisible(handle):
+            return 1
+        style = u.GetWindowLongW(handle, GWL_STYLE) & 0xFFFFFFFF
+        if not style & WS_VISIBLE:
+            return 1
+        ex = u.GetWindowLongW(handle, GWL_EXSTYLE) & 0xFFFFFFFF
+        forces_button = bool(ex & WS_EX_APPWINDOW)
+        if ex & WS_EX_TOOLWINDOW and not forces_button:
+            return 1
+        if _handle(u.GetWindow(handle, GW_OWNER)) and not forces_button:
+            return 1
+        if not u.GetWindowTextLengthW(handle):
+            return 1
+        if _is_cloaked(handle):
+            return 1
+        count += 1
+        return 1
+
+    u.EnumWindows(_ENUM_WINDOWS(_visit), 0)
+    return count

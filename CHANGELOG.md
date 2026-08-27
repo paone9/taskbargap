@@ -4,6 +4,26 @@ All notable changes to `taskbargap`. Versions follow [semantic
 versioning](https://semver.org), with the pre-1.0 caveat that the API can still
 change between minor versions.
 
+## 0.1.1 (2026-08-27)
+
+### Fixed
+
+- **`measured=True` could be confidently wrong.** On Windows 11 the app-button
+  container reports a width too narrow to hold the buttons it contains once
+  enough apps are running, so `find_gap()` returned a left edge sitting on top
+  of real, clickable icons and labelled it a measurement. Reported with UI
+  Automation evidence: 14 real buttons extending to x=1568, against a container
+  claiming x=1128.
+
+  The reported edge is now corroborated against the number of windows that must
+  own a taskbar button. When the arithmetic is impossible, the gap comes back
+  with `measured=False` and the more conservative of the two estimates.
+
+  Read the new note in the README before relying on this: a `measured=False`
+  edge is an honest guess, not a safe one, and it can still overlap buttons.
+  There is no dependable way to measure the real buttons, which live in an
+  undocumented XAML subtree with no structural link to the legacy control.
+
 ## 0.1.0 (2026-08-03)
 
 First release. The taskbar detection and placement code out of a shipping

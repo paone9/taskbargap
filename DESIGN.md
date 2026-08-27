@@ -6,7 +6,7 @@ reuse it. The hard parts had already been proven in a real application before th
 package existed, which is why the detection and placement paths are more careful
 than a first draft would be.
 
-**Status:** v0.1.0 on PyPI, alpha. The API can still change inside 0.x.
+**Status:** v0.1.1 on PyPI, alpha. The API can still change inside 0.x.
 
 ## The problem being solved
 
@@ -69,9 +69,13 @@ than aspirational, and it keeps the ctypes modules down to Win32 plumbing.
   `Shell_TrayWnd`, no usable span, or a vertically docked taskbar. Callers can
   treat "no gap" as a normal state. Off Windows it raises `NotWindowsError`, since
   the library should not pretend a Linux desktop is just a machine with no gap.
-- **`Gap.measured`** is `True` when the app-button edge was read from a real window
-  (`ReBarWindow32` or `MSTaskListWClass`) and `False` when it fell back to the 30%
-  heuristic. Callers that need to avoid covering buttons check it.
+- **`Gap.measured`** is `True` only when the app-button edge was read from a real
+  window *and* survived corroboration against the number of windows that must own
+  a button. `False` means the edge is a guess, whether from the 30% heuristic or
+  from a reported rect that failed corroboration. `False` is not a warning that
+  the edge is unsafe and `True` is not a promise that it is safe: it says which
+  of the two the library is handing you. A guessed edge can still overlap
+  buttons, because on Windows 11 there is nothing dependable to measure.
 - **`place()`** never widens past the gap. If `min_width` doesn't fit it returns
   `False` and does nothing, leaving the caller to decide whether to hide, because
   that is policy.
@@ -155,6 +159,41 @@ still wins. It deliberately does not reject a plausible edge that leaves no room
 On Win10 the rebar band grows with the buttons, so a full taskbar legitimately has
 no gap, and falling back to the heuristic there would cover real buttons. That
 distinction is the whole fix.
+
+**The button strip's own rect cannot be taken at face value.** Reported from
+outside with UI Automation evidence, and the most important thing found in this
+library so far: on Windows 11 the app-button container reports a width too
+narrow to hold the buttons it actually contains once enough apps are running.
+Not stale, not mid-update, just short. Trusting it produced `measured=True` with
+a left edge on top of four real icons.
+
+Confirmed here without any COM by counting windows that must own a button: nine
+of them, in a strip claiming 878 physical pixels at 250%, which is 39 logical
+pixels per button when the floor is about 44. The container rect was also seen
+moving between two probes minutes apart, so it tracks changes and still lands
+short.
+
+There is no good measurement to switch to. `IAccessible` reports zero children
+for that control, UIA reports zero descendants for it as well, and the real
+buttons live under a `DesktopWindowXamlSource` element that is a **sibling** of
+the legacy control rather than a descendant, with no structural relationship to
+it. Walking that would mean coupling to an undocumented shell surface with no
+stability contract, and taking a COM dependency, to replace one unreliable
+source with another.
+
+So the fix is not a better measurement, it is an honest one: corroborate the
+reported edge against the button count, and when it is impossible, say so with
+`measured=False` and move the edge to the more conservative of the two
+estimates. `measured=False` is not a promise of safety, and the README says so
+in those words. The credibility floor (40 logical px) sits below the estimate's
+per-button width (44), which is what guarantees a downgrade can never move the
+edge left, over the buttons.
+
+The known cost: Windows 10 compresses buttons when the bar fills up, and they
+can legitimately drop below the 40px floor there. On such a machine this would
+report `measured=False` for an edge that was actually correct, which is
+pessimistic rather than wrong, and the right direction to err. Windows 10
+remains untested, so that is reasoning rather than measurement.
 
 **`place()` reports refusal.** `SetWindowPos` can fail, on a window owned by a
 higher-integrity process or one destroyed mid-call, and returning `True` anyway

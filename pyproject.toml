@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taskbargap"
-version = "0.1.0"
+version = "0.1.1"
 description = "Find the empty gap in the Windows taskbar and place a top-most window in it, across monitors and DPI."
 readme = "README.md"
 requires-python = ">=3.10"
