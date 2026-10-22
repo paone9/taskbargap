@@ -164,3 +164,65 @@ def estimate_button_edge(strip_left: int, button_count: int, scale: float,
     guess than the reported edge, never as a measurement.
     """
     return strip_left + round(button_count * button_width * scale)
+
+
+#: When the taskbar has more than one empty span, the rightmost is preferred
+#: (it is where a widget conventionally sits, next to the clock, and it is the
+#: span that stays put as buttons come and go in a left-aligned layout) unless
+#: it is narrower than this fraction of the widest one. Then the widest wins:
+#: in a left-aligned Windows 11 layout the Widgets button sits a few pixels
+#: left of the tray, and the sliver between them is no place for a window.
+PREFER_RIGHT_RATIO = 0.4
+
+
+def free_spans(
+    left: int,
+    right: int,
+    items: list[tuple[int, int, int, int]] | tuple[tuple[int, int, int, int], ...],
+) -> list[tuple[int, int]]:
+    """The empty horizontal spans of `[left, right)` once `items` are removed.
+
+    `items` are `(left, top, right, bottom)` rects of everything drawn on the
+    bar (any order, overlaps allowed, parts outside the bound ignored). Only the
+    horizontal extent matters: the bar is one row. Returns `(left, right)` pairs
+    in screen order, each of positive width.
+    """
+    if right <= left:
+        return []
+    occupied = sorted(
+        (max(il, left), min(ir, right))
+        for il, _t, ir, _b in items
+        if ir > il and ir > left and il < right
+    )
+    spans = []
+    cursor = left
+    for il, ir in occupied:
+        if il > cursor:
+            spans.append((cursor, il))
+        if ir > cursor:
+            cursor = ir
+    if right > cursor:
+        spans.append((cursor, right))
+    return spans
+
+
+def choose_span(
+    spans: list[tuple[int, int]],
+    prefer_right_ratio: float = PREFER_RIGHT_RATIO,
+) -> tuple[int, int] | None:
+    """Pick the span a window should go in: the rightmost one, unless it is
+    narrower than `prefer_right_ratio` of the widest, in which case the widest.
+
+    This keeps the choice stable as apps open and close. A centred Windows 11
+    layout has two near-equal spans either side of the buttons and both shrink
+    together, so the right one keeps winning; a left-aligned layout has one big
+    span and, at most, a sliver right of the Widgets button, so the big one
+    keeps winning.
+    """
+    if not spans:
+        return None
+    widest = max(spans, key=lambda s: s[1] - s[0])
+    rightmost = spans[-1]
+    if (rightmost[1] - rightmost[0]) >= (widest[1] - widest[0]) * prefer_right_ratio:
+        return rightmost
+    return widest

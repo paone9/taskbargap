@@ -4,6 +4,34 @@ All notable changes to `taskbargap`. Versions follow [semantic
 versioning](https://semver.org), with the pre-1.0 caveat that the API can still
 change between minor versions.
 
+## 0.2.0 (unreleased)
+
+### Added
+
+- **Windows 11's taskbar is now measured from what it draws.** `find_gap()`
+  reads the taskbar's own UI Automation tree, one element per Start, Search,
+  Task View, app and Widgets button with its screen rectangle, and returns a
+  span between those elements with `measured=True`. This replaces the 0.1.1
+  "honest guess" on Windows 11 with a measurement, and it accounts for the
+  Widgets button, which the legacy windows never did: in a left-aligned layout
+  it sits a few pixels left of the clock, exactly where a right-aligned widget
+  was being placed. Where there is more than one empty span the rightmost is
+  chosen unless it is under 40% of the widest, which keeps the choice stable as
+  apps open and close in both taskbar alignments.
+
+  The read is plain `ctypes` against `CUIAutomation` (no new dependency), asks
+  for rectangles only, is cached for 3s unless the cheap Win32 reads see a
+  change, and costs ~20-30ms when taken. Any failure falls back to the 0.1.1
+  behaviour: the legacy windows, corroborated, `measured=False` when they can't
+  be believed. `SECURITY.md` lists the new COM calls.
+- `taskbar_items()` exposes those rectangles, so an application can show why
+  the gap is where it is.
+
+### Changed
+
+- `Gap.measured` is now True on Windows 11 whenever the UI Automation reading
+  succeeded, and keeps its 0.1.1 meaning on the legacy path.
+
 ## 0.1.1 (2026-08-27)
 
 ### Fixed

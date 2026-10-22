@@ -12,7 +12,7 @@ import taskbargap
 def test_public_api_is_exactly_what_is_documented():
     assert sorted(taskbargap.__all__) == [
         "Gap", "GapWatcher", "NotWindowsError", "enable_dpi_awareness",
-        "find_gap", "place",
+        "find_gap", "place", "taskbar_items",
     ]
     for name in taskbargap.__all__:
         assert hasattr(taskbargap, name), name

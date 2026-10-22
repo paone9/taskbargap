@@ -10,12 +10,12 @@ monitor's DPI factor, for toolkits that want logical ones.
     gap = taskbargap.find_gap()            # -> Gap | None
     taskbargap.place(my_hwnd, align="right")
 """
-from ._detect import Gap, find_gap
+from ._detect import Gap, find_gap, taskbar_items
 from ._place import place
 from ._win32 import NotWindowsError, enable_dpi_awareness
 from .watcher import GapWatcher
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __all__ = [
     "Gap",
     "GapWatcher",
@@ -23,4 +23,5 @@ __all__ = [
     "enable_dpi_awareness",
     "find_gap",
     "place",
+    "taskbar_items",
 ]

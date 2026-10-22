@@ -74,6 +74,7 @@ when an app wants to get out of the way.
 | `place(hwnd, *, align="right", margin=12, min_width=160, width=None, height=None, gap=None, nonblocking=False) -> bool` | Size and position an existing window inside the gap as a top-most tool window. `width` defaults to filling the gap, `height` to the taskbar's own height. False means it did nothing: no gap, `min_width` didn't fit, or Windows refused the move. |
 | `GapWatcher(hwnd, *, align, margin, min_width, width, height, interval=1.0, on_change=None)` | Background watcher that keeps the window fitted and top-most as the taskbar changes. `.start()` / `.stop() -> bool`, or use it as a context manager. |
 | `enable_dpi_awareness() -> bool` | Opt into per-monitor-v2 DPI awareness. Falls back gracefully on old Windows. |
+| `taskbar_items() -> list[tuple[int, int, int, int]] \| None` | The screen rects (physical px) of every button the Windows 11 taskbar draws: Start, Search, Task View, each app, Widgets. `None` off Windows 11 or when the shell isn't answering. This is what `find_gap()` measures against; exposed so you can show *why* the gap is where it is. |
 | `Gap` | Frozen dataclass: `left, right, top, bottom` (physical px), `scale` (DPI factor), `monitor` (HMONITOR), `measured`, plus `width` / `height`. |
 | `NotWindowsError` | Raised by any Win32 call when you're not on Windows. |
 
@@ -109,18 +110,23 @@ only in per-monitor mode that you get real screen pixels and an unscaled window.
 
 ## Honest limitations
 
-- **The app-button edge cannot always be measured, and `measured=False` is not a
-  safe edge.** This is the limitation that matters most, so it goes first. The
-  edge is read from the taskbar's own `ReBarWindow32` and `MSTaskListWClass`
-  windows. On Windows 11 that rect can be **wrong rather than missing**: with
-  enough apps running it reports a width too narrow to hold the buttons it
-  contains, so the gap's left edge lands on top of real, clickable icons.
-  Measured on a 250% display with nine windows open, the strip claimed a width
-  of 39 logical pixels per button when the narrowest a button gets is about 44.
-  The real buttons live in an undocumented XAML subtree that has no structural
-  relationship to the legacy control, so there is nothing dependable to read.
+- **On Windows 11 the gap is measured from the buttons the taskbar actually
+  draws; elsewhere it is a corroborated reading or a guess, and `measured=False`
+  is not a safe edge.** Windows 11 draws its taskbar in XAML, and the legacy
+  `ReBarWindow32` / `MSTaskListWClass` windows there report a width that can be
+  **wrong rather than missing**: too narrow to hold the buttons they contain,
+  and blind to the Widgets button, which in a left-aligned layout sits a few
+  pixels left of the clock. The library therefore reads the taskbar's own UI
+  Automation tree, which has one element per drawn button with its screen
+  rectangle, and returns a span between those elements with `measured=True`.
+  Where there is more than one empty span it takes the rightmost unless that is
+  a sliver (under 40% of the widest), so a left-aligned bar gives the space
+  between the last app button and Widgets, and a centred bar the space right of
+  the cluster. The reading is cached for 3s unless something the cheap reads
+  can see has changed, and costs ~20-30ms when taken.
 
-  What the library does about it: the reported edge is checked against the
+  Without that tree (Windows 10, Server, a replacement shell, Explorer
+  mid-restart) the legacy windows are used. Their edge is checked against the
   number of windows that must own a button, and when the arithmetic is
   impossible you get `measured=False` plus the more conservative of the two
   estimates. **That is honesty, not safety.** A `measured=False` edge is still a

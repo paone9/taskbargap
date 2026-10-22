@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import _win32
+import threading
+import time
+
+from . import _uia, _win32
 from ._geometry import (
     BUTTON_FRACTION,
+    choose_span,
     estimate_button_edge,
+    free_spans,
     gap_span,
     is_on_taskbar,
     strip_can_hold,
@@ -32,14 +37,16 @@ class Gap:
     that scale window *position* by DPI (pywebview, WinForms) need the logical
     value: `x_logical = round(gap.left / gap.scale)`.
 
-    `measured` is True only when the app-button edge was read from a real window
-    *and* that reading survived corroboration against the number of windows that
-    must own a button. It is False when the edge is a guess.
+    `measured` is True when the span was read from the buttons the taskbar
+    actually draws: on Windows 11, through the taskbar's own UI Automation tree
+    (every Start, Search, Task View, app and Widgets button, with its screen
+    rectangle); on Windows 10, from the app-button strip's window when that
+    reading survived corroboration against the number of windows that must own
+    a button. It is False when the edge is a guess.
 
     False does not mean "unsafe" and True does not mean "safe": it means the
     library is telling you which of the two it is. A guessed edge may still sit
-    on top of buttons, because there is no reliable way to measure them on every
-    shell. Treat False as "draw here at your own risk, or don't draw".
+    on top of buttons. Treat False as "draw here at your own risk, or don't draw".
     """
     left: int
     right: int
@@ -100,6 +107,54 @@ def _button_edge(tray: int, tray_rect: tuple[int, int, int, int], scale: float):
     return max(strip[2], estimate_button_edge(strip[0], count, scale)), False
 
 
+#: How long a UI Automation reading of the taskbar is reused while nothing the
+#: cheap Win32 reads can see has changed. A full reading costs ~20-30ms (one
+#: cross-process round trip, cached rectangles for every button), which is too
+#: much for callers polling at a few Hz, and the buttons cannot move without
+#: one of: a window appearing or vanishing (the button count changes), the tray
+#: cluster or the bar itself moving, or a drag-to-reorder, which this interval
+#: catches soon enough.
+UIA_REFRESH_S = 3.0
+
+_uia_lock = threading.Lock()
+_uia_cache: tuple[tuple, float, list[tuple[int, int, int, int]] | None] | None = None
+
+
+def _taskbar_items(tray: int, signature: tuple) -> list[tuple[int, int, int, int]] | None:
+    """`_uia.taskbar_items`, memoised on `signature` for `UIA_REFRESH_S`.
+
+    `signature` is everything the legacy reads know about the bar; any change
+    in it forces a fresh reading. None (no answer) is cached too, so a shell
+    with no XAML taskbar is not re-asked on every tick.
+    """
+    global _uia_cache
+    now = time.monotonic()
+    with _uia_lock:
+        cached = _uia_cache
+        if cached is not None and cached[0] == signature and now - cached[1] < UIA_REFRESH_S:
+            return cached[2]
+    items = _uia.taskbar_items(tray)
+    with _uia_lock:
+        _uia_cache = (signature, now, items)
+    return items
+
+
+def taskbar_items() -> list[tuple[int, int, int, int]] | None:
+    """Screen rects, physical px, of the buttons the Windows 11 taskbar draws:
+    Start, Search, Task View, every app button, Widgets. Uncached.
+
+    None when there is no answer: not Windows 11's XAML taskbar (Windows 10,
+    Server, a replacement shell), UI Automation unavailable, or Explorer not
+    responding. `find_gap()` uses this when it can and falls back to the legacy
+    button windows when it can't; it is exposed so a caller can show *why* the
+    gap is where it is.
+    """
+    tray = _win32.find_window(TRAY_CLASS)
+    if not tray:
+        return None
+    return _uia.taskbar_items(tray)
+
+
 def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
     """Detect the empty taskbar gap. Returns a `Gap`, or `None` if there isn't one.
 
@@ -108,8 +163,12 @@ def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
     can treat it as normal rather than exceptional. It does not swallow bugs:
     on a non-Windows platform this raises `NotWindowsError`.
 
-    `fraction` overrides the fallback button-edge heuristic used when the button
-    strip can't be measured (native Windows 11).
+    On Windows 11 the span comes from the buttons the taskbar actually draws,
+    read through UI Automation (`measured=True`); where there is more than one
+    empty span, see `_geometry.choose_span` for which one is returned. Elsewhere,
+    or when that reading fails, the legacy button windows are used, and
+    `fraction` overrides the button-edge heuristic taken when even those can't
+    be measured.
     """
     tray = _win32.find_window(TRAY_CLASS)
     if not tray:
@@ -130,10 +189,21 @@ def find_gap(fraction: float = BUTTON_FRACTION) -> Gap | None:
 
     scale = _win32.window_scale(tray)
     edge, credible = _button_edge(tray, rect, scale)
-    span = gap_span(tray_l, tray_r, notify_left, edge, fraction)
-    if span is None:
-        return None
-    left, right, measured = span
+    items = _taskbar_items(tray, (rect, notify_rect, edge, credible))
+    if items:
+        # The taskbar's own account of what it draws. Nothing can be covered
+        # that isn't in it, so a span between its items is a measurement.
+        right_bound = tray_r if notify_left is None else notify_left
+        span = choose_span(free_spans(tray_l, right_bound, items))
+        if span is None:
+            return None      # every pixel is a button: there is no gap
+        left, right = span
+        measured = credible = True
+    else:
+        span = gap_span(tray_l, tray_r, notify_left, edge, fraction)
+        if span is None:
+            return None
+        left, right, measured = span
     return Gap(
         left=left, right=right, top=tray_t, bottom=tray_b,
         scale=scale,

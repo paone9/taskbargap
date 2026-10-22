@@ -51,7 +51,9 @@ src/taskbargap/
   __init__.py     public API: find_gap, place, GapWatcher, enable_dpi_awareness, Gap
   _geometry.py    pure arithmetic (no ctypes): gap span, aligned fit
   _win32.py       ctypes bindings, RECT/MONITORINFO, small helpers
-  _detect.py      find_gap(): Shell_TrayWnd -> tray edge, button edge, the span
+  _uia.py         ctypes-only COM client for the Win11 taskbar's UI Automation tree
+  _detect.py      find_gap(): Shell_TrayWnd -> tray edge, drawn buttons (Win11) or
+                  legacy button edge, the span
   _place.py       place(): fit + ex-styles + top-most move/show
   watcher.py      GapWatcher: background thread, change detection
 ```
@@ -173,21 +175,50 @@ pixels per button when the floor is about 44. The container rect was also seen
 moving between two probes minutes apart, so it tracks changes and still lands
 short.
 
-There is no good measurement to switch to. `IAccessible` reports zero children
-for that control, UIA reports zero descendants for it as well, and the real
-buttons live under a `DesktopWindowXamlSource` element that is a **sibling** of
-the legacy control rather than a descendant, with no structural relationship to
-it. Walking that would mean coupling to an undocumented shell surface with no
-stability contract, and taking a COM dependency, to replace one unreliable
-source with another.
+At 0.1.1 the conclusion was that there was no good measurement to switch to:
+`IAccessible` reports zero children for that control, UIA reports zero
+descendants for it, and the real buttons live under a `DesktopWindowXamlSource`
+element that is a **sibling** of the legacy control, so the fix was an honest
+one rather than a better one: corroborate the reported edge against the button
+count, and when it is impossible, say so with `measured=False` and move the
+edge to the more conservative of the two estimates. The credibility floor (40
+logical px) sits below the estimate's per-button width (44), which is what
+guarantees a downgrade can never move the edge left, over the buttons. That is
+still the Windows 10 path, and the fallback everywhere.
 
-So the fix is not a better measurement, it is an honest one: corroborate the
-reported edge against the button count, and when it is impossible, say so with
-`measured=False` and move the edge to the more conservative of the two
-estimates. `measured=False` is not a promise of safety, and the README says so
-in those words. The credibility floor (40 logical px) sits below the estimate's
-per-button width (44), which is what guarantees a downgrade can never move the
-edge left, over the buttons.
+**0.2.0 reads the XAML taskbar after all, through UI Automation, in plain
+ctypes.** Two things changed the trade. First, the honest guess was still
+covering icons in practice: the application this library serves was placed over
+the Widgets button, which in a left-aligned Windows 11 layout sits a few pixels
+left of the clock, somewhere no legacy window describes at all. Second, the
+coupling turned out to be smaller than feared. The accessibility tree is not an
+undocumented surface in the way the XAML visual tree is: it is what Narrator
+reads, Explorer has to keep it right, and the only structural fact relied on is
+one class name, `Taskbar.TaskbarFrameAutomationPeer`, whose direct children are
+exactly the things a window must not cover. No COM library is taken either:
+`_uia.py` drives `CUIAutomation` through raw vtables with `ctypes` (slots
+validated against the .NET `UIAutomationClient` wrapper, rectangle for
+rectangle), asks for the bounding rectangle and nothing else, and one
+`FindAllBuildCache` call fetches every button and its rect in a single
+cross-process round trip, ~20-30ms. The result is cached for 3s unless the
+cheap Win32 reads (tray rect, tray cluster rect, strip edge, window count) see
+a change, so a 1Hz watcher pays for it only when something moved.
+
+The failure contract is the point of the design: `taskbar_items()` returns
+None for every "no answer" (no UIAutomationCore, no XAML frame, Explorer
+mid-rebuild, a frame with no children) and `find_gap()` then takes the 0.1.1
+path unchanged. A failed object creation is not retried for 60s. COM is
+initialised multithreaded per calling thread and never uninitialised, because
+the thread may belong to the host application.
+
+**Which empty span, when there are several.** A Windows 11 bar has at least
+two: left-aligned, the space between the last app button and Widgets plus a
+sliver between Widgets and the clock; centred, a span either side of the
+cluster. `_geometry.choose_span` takes the rightmost unless it is under 40% of
+the widest. Rightmost because that is where a widget conventionally sits and,
+left-aligned, it is the span that stays put as buttons come and go; the ratio so
+that the sliver after Widgets never wins and a centred layout, whose two spans
+shrink together, never flips between ticks. Tested across 1..29 buttons.
 
 The known cost: Windows 10 compresses buttons when the bar fills up, and they
 can legitimately drop below the 40px floor there. On such a machine this would
@@ -209,8 +240,11 @@ dependency the library doesn't take.
 
 Win32 and GUI code is hard to unit-test, so it is split:
 
-- **Pure logic** (`tests/test_geometry.py`, `tests/test_api.py`): the gap span and
-  the aligned fit as plain ints, plus the public surface. Runs on any OS.
+- **Pure logic** (`tests/test_geometry.py`, `tests/test_api.py`,
+  `tests/test_detect_logic.py`): the gap span, the free spans between drawn
+  buttons and which one wins, the aligned fit, the corroboration decision, and
+  `find_gap()` against a stand-in Windows 11 shell (legacy windows understating
+  the buttons, UI Automation answering or not). Runs on any OS.
 - **Live shell** (`tests/test_windows.py`): asserts against the real taskbar and a
   real throwaway tkinter window. That the gap sits inside its monitor and matches
   the taskbar row, that a placed window lands inside the gap with the right
@@ -239,6 +273,7 @@ What has actually been validated, and where:
 | Watcher against a never-pumping UI thread | keeps ticking. Verified to fail without the async fix |
 | Explorer killed under a running watcher | forced for real (`tests/test_explorer_restart.py`): `find_gap()` never raised, never reported a confident gap at the Start button, and returned `None` for the outage. The taskbar came back as a different window (65874 to 132334) and the watcher re-fitted to it (window 800 to 877 px) with no error |
 | Stock Windows 11 build 26200, both taskbar alignments | button edge measured correctly either way: left-aligned gap starts at 865, centred at 2121, matching the visible cluster in a screenshot. No shell replacement is installed, checked for ExplorerPatcher, StartAllBack and Start11, and for third-party DLLs in `explorer.exe` |
+| UI Automation path, Windows 11 26200, 3840×2160 at 175%, left-aligned, 17 buttons | `taskbar_items()` matches the .NET `UIAutomationClient` wrapper rectangle for rectangle (Start 0..96, apps to 1328, Widgets 3075..3341 beside the clock at 3397). `find_gap()` returns 1405..3075 `measured=True` where 0.1.1 returned 846..1945 (logical) over Widgets. Fresh reading 20-30ms, cached 1-2ms. The live test `test_the_gap_covers_no_drawn_button` asserts the no-overlap property on whatever the machine's bar holds. Centred layout and Windows 10 fallback: **unit-tested with a stand-in shell, not yet run live** |
 | The 30% heuristic fallback | **never exercised on a real machine**, only in unit tests and by injecting dead rects. Stock Win11 and Win10 both host the legacy button windows, so reaching this path takes a shell that doesn't |
 | Windows 10 | **not validated**, though it is the layout the measured path was written against |
 | Mixed-scale monitors, both directions, three layouts: 175%+100%, 125%+200%, 200%+150% | **validated**, and it exercised the case the rule exists for. Primary detection and placement are unaffected in every layout, across three real taskbar row heights (60px at 125%, 84px at 175%, 96px at 200%), which is the row height the library sizes windows to. The divergence shows up on the secondary bar, whose monitor differs from the system DPI. At 175%+100% a system-aware process is shown `(6720, 3696, 13440, 3780)`, the real 3840px edge stretched into 175% space, where `GetDpiForWindow` answers 96 and the naive 1.0 divisor leaves 6720 instead of 3840. At 125%+200% it runs the other way: the same bar appears as `(3840, 1290, 6240, 1350)`, squeezed by 0.625, with `GetDpiForWindow` answering 192 against a system 1.25. The rule returns the system factor both times. Regression test: `test_scale_ignores_the_monitor_dpi_when_the_process_cannot_use_it`, which self-skips on same-scale machines |
@@ -270,11 +305,10 @@ alongside it.
   known to differ, using `WorkerW > MSTaskListWClass` with no `ReBarWindow32`, and
   the descendant walk that would read it is already tested. Adding it is additive:
   today's `find_gap()` keeps its meaning either way.
-- A UI Automation path for shells that host no legacy button windows. Stock
-  Windows 11 turned out to host them in both alignments, so the 30% heuristic is a
-  rare fallback rather than the main event. Worth revisiting if a Windows build
-  actually removes them.
+- UI Automation for anything but the primary Windows 11 taskbar frame. The
+  secondary bars publish a tree too, and reading it is the natural way to do the
+  item above.
 
-The API has not yet been used by anything other than its own tests. Until a real
-application drives it, treat the shape of `place()` and `GapWatcher` as
-provisional, which is what the 0.x version number is for.
+One application drives the API (the widget it was extracted from, through
+`find_gap()` and its own placement). Until more do, treat the shape of `place()`
+and `GapWatcher` as provisional, which is what the 0.x version number is for.

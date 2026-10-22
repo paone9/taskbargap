@@ -278,6 +278,10 @@ def test_a_dead_button_rect_falls_back_instead_of_covering_the_buttons(gap, monk
     real_rect = _win32.window_rect
     monkeypatch.setattr(_win32, "window_rect",
                         lambda hwnd: real_rect(hwnd) if hwnd == tray else (0, 0, 0, 0))
+    # This is the legacy path's guard; on Windows 11 the UI Automation reading
+    # would answer first, so take it away.
+    monkeypatch.setattr(taskbargap._detect, "_uia_cache", None)
+    monkeypatch.setattr(taskbargap._detect._uia, "taskbar_items", lambda tray: None)
 
     degraded = taskbargap.find_gap()
     assert degraded is not None
@@ -285,6 +289,46 @@ def test_a_dead_button_rect_falls_back_instead_of_covering_the_buttons(gap, monk
     assert degraded.left > tray_rect[0]            # not pinned to the far left
     assert degraded.left == int((tray_rect[2] - tray_rect[0]) * 0.30)
     assert degraded.right == tray_rect[2]          # dead tray rect ignored too
+
+
+def _is_windows_11() -> bool:
+    return sys.getwindowsversion().build >= 22000
+
+
+@pytest.fixture
+def items():
+    found = taskbargap.taskbar_items()
+    if found is None:
+        if _is_windows_11():
+            _no_shell("Windows 11, but the taskbar's UI Automation tree was not readable")
+        pytest.skip("no XAML taskbar frame: not Windows 11")
+    return found
+
+
+def test_taskbar_items_are_buttons_on_the_taskbar_row(items):
+    tray = _win32.window_rect(_win32.find_window("Shell_TrayWnd"))
+    assert len(items) >= 1                                     # Start, at least
+    for left, top, right, bottom in items:
+        assert right > left and bottom > top
+        assert is_on_taskbar((left, top, right, bottom), tray)
+
+
+def test_the_gap_covers_no_drawn_button(gap, items):
+    """The reason the UI Automation path exists: whatever the shell draws, the
+    gap is between it, never over it. Checked against the live bar, where the
+    legacy windows got it wrong (CHANGELOG 0.1.1, 0.2.0)."""
+    assert gap.measured is True
+    for left, _top, right, _bottom in items:
+        assert right <= gap.left or left >= gap.right, (
+            f"button {left}..{right} overlaps gap {gap.left}..{gap.right}")
+
+
+def test_the_uia_reading_is_quick_enough_to_poll(items):
+    """A fresh (uncached) reading per tick must stay well under the watcher's
+    1s interval; ~20-30ms is typical, 200ms is the alarm threshold."""
+    t = time.perf_counter()
+    assert taskbargap.taskbar_items() is not None
+    assert time.perf_counter() - t < 0.2
 
 
 def test_find_gap_is_stable_across_calls(gap):

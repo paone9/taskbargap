@@ -2,16 +2,16 @@
 
 `taskbargap` is a small local library. It measures the Windows taskbar and moves a
 window you give it. This page spells out exactly what it touches so you, or your
-security team, can review it quickly. It is under 800 lines of plain Python across
-six modules with no dependencies at all, just the standard library (`ctypes`,
-`dataclasses`, `logging`, `sys`, `threading`, `typing`). No binaries, no
-obfuscation, nothing to unpack.
+security team, can review it quickly. It is about 1,100 lines of plain Python
+across seven modules with no dependencies at all, just the standard library
+(`ctypes`, `dataclasses`, `logging`, `sys`, `threading`, `time`, `typing`). No
+binaries, no obfuscation, nothing to unpack.
 
 ## What it reads
 
-Everything goes through `user32.dll` via `ctypes`, on a handle the library loads
-for itself rather than mutating the process-wide `ctypes.windll`. The complete
-list of read calls:
+Everything goes through `ctypes`, on handles the library loads for itself rather
+than mutating the process-wide `ctypes.windll`. The Win32 reads are all in
+`user32.dll`:
 
 - Finding the taskbar: `FindWindowW` and `FindWindowExW`, which locate
   `Shell_TrayWnd` and its children (the tray cluster and the app-button strip) by
@@ -21,9 +21,22 @@ list of read calls:
 - DPI: `GetDpiForWindow`, `GetDpiForSystem`, `GetThreadDpiAwarenessContext`,
   `GetAwarenessFromDpiAwarenessContext`.
 
+On Windows 11 it also reads the taskbar's accessibility tree, the one Narrator
+uses, through UI Automation (`_uia.py`). This is COM, driven directly through
+`ctypes` with no COM library: `ole32.dll` (`CoInitializeEx`, `CLSIDFromString`,
+`CoCreateInstance` of the in-process `CUIAutomation` object), `oleaut32.dll`
+(`SysAllocString`, `VariantClear`, `SafeArrayGetDim`, `SafeArrayGetUBound`,
+`SafeArrayAccessData`, `SafeArrayUnaccessData`), and on the automation object
+itself `ElementFromHandle` (of `Shell_TrayWnd`), `CreatePropertyCondition`,
+`CreateTrueCondition`, `CreateCacheRequest`, `FindFirst`, `FindAllBuildCache`,
+`GetCachedPropertyValue` and `Release`. It asks for exactly one property, the
+`BoundingRectangle` of each button in the taskbar frame. It does not ask for
+names, text, patterns or any element outside the taskbar, and it never invokes,
+focuses, or sets anything through UI Automation.
+
 It reads window geometry. It does not read window contents, capture the screen,
 read other processes' memory, hook input, or enumerate what you have open beyond
-the taskbar's own child windows.
+the taskbar's own child windows and the buttons the taskbar draws for them.
 
 ## What it changes
 
@@ -74,8 +87,8 @@ the shell afterwards either way.
 
 ## How to check it yourself
 
-- Read it. Six modules, no dependencies. `_win32.py` is the only file that talks to
-  Windows, and everything in `_geometry.py` is pure arithmetic.
+- Read it. Seven modules, no dependencies. `_win32.py` and `_uia.py` are the only
+  files that talk to Windows, and everything in `_geometry.py` is pure arithmetic.
 - CI runs [`ruff`](https://github.com/astral-sh/ruff) and
   [`bandit`](https://github.com/PyCQA/bandit) on every push, plus a
   [CodeQL](https://codeql.github.com/) workflow analysing the Python and the

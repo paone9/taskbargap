@@ -2,6 +2,8 @@
 import pytest
 
 from taskbargap._geometry import (
+    choose_span,
+    free_spans,
     ALIGNMENTS,
     estimate_button_edge,
     fit,
@@ -191,3 +193,68 @@ class TestEstimateButtonEdge:
 
     def test_no_buttons_leaves_the_edge_alone(self):
         assert estimate_button_edge(140, 0, 2.5) == 140
+
+
+# Rects as UI Automation reports them on the machine this was built on:
+# Windows 11 26200, 3840 wide at 175%, left-aligned, 17 buttons then Widgets
+# sitting just left of the tray cluster at 3397.
+ROW = (2076, 2160)
+LEFT_ALIGNED = [(x, ROW[0], x + 77, ROW[1]) for x in range(96, 1328, 77)]
+LEFT_ALIGNED.insert(0, (0, ROW[0], 96, ROW[1]))                 # Start
+LEFT_ALIGNED.append((3117, ROW[0], 3383, ROW[1]))               # Widgets
+
+
+class TestFreeSpans:
+    def test_the_observed_left_aligned_layout(self):
+        # Between the last app button and Widgets, and the sliver after Widgets.
+        assert free_spans(0, 3397, LEFT_ALIGNED) == [(1328, 3117), (3383, 3397)]
+
+    def test_a_centred_layout_has_a_span_either_side(self):
+        items = [(0, 0, 96, 10), (1700, 0, 2100, 10)]          # Widgets far left, cluster centred
+        assert free_spans(0, 3397, items) == [(96, 1700), (2100, 3397)]
+
+    def test_overlapping_and_unsorted_items_are_merged(self):
+        items = [(500, 0, 600, 10), (100, 0, 550, 10), (590, 0, 700, 10)]
+        assert free_spans(0, 1000, items) == [(0, 100), (700, 1000)]
+
+    def test_items_outside_the_bound_are_clipped_or_ignored(self):
+        items = [(-50, 0, 20, 10), (980, 0, 1200, 10), (2000, 0, 2100, 10)]
+        assert free_spans(0, 1000, items) == [(20, 980)]
+
+    def test_no_items_means_the_whole_bar(self):
+        assert free_spans(10, 1000, []) == [(10, 1000)]
+
+    def test_a_full_bar_has_no_span(self):
+        assert free_spans(0, 1000, [(0, 0, 1000, 10)]) == []
+
+    def test_degenerate_rects_do_not_count(self):
+        assert free_spans(0, 1000, [(300, 0, 300, 10), (400, 0, 390, 10)]) == [(0, 1000)]
+
+    def test_an_empty_bound_has_no_span(self):
+        assert free_spans(1000, 1000, []) == []
+        assert free_spans(1000, 900, []) == []
+
+
+class TestChooseSpan:
+    def test_left_aligned_takes_the_wide_span_not_the_sliver_after_widgets(self):
+        assert choose_span([(1328, 3117), (3383, 3397)]) == (1328, 3117)
+
+    def test_centred_takes_the_right_span(self):
+        assert choose_span([(96, 1700), (2100, 3397)]) == (2100, 3397)
+
+    def test_centred_keeps_taking_the_right_span_as_apps_open(self):
+        # Both sides shrink together; the choice must not flip between ticks.
+        for buttons in range(1, 30):
+            half = buttons * 77 // 2
+            spans = [(96, 1800 - half), (1800 + half, 3397)]
+            assert choose_span(spans) == spans[-1]
+
+    def test_the_ratio_is_the_tipping_point(self):
+        assert choose_span([(0, 1000), (2000, 2400)]) == (2000, 2400)      # 40%: right wins
+        assert choose_span([(0, 1000), (2000, 2399)]) == (0, 1000)         # just under: widest
+
+    def test_one_span_is_that_span(self):
+        assert choose_span([(10, 20)]) == (10, 20)
+
+    def test_none_is_none(self):
+        assert choose_span([]) is None
