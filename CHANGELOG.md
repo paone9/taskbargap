@@ -4,6 +4,14 @@ All notable changes to `taskbargap`. Versions follow [semantic
 versioning](https://semver.org), with the pre-1.0 caveat that the API can still
 change between minor versions.
 
+## 0.2.1 (2026-10-23)
+
+Maintenance release. No library code changes.
+
+- Release tooling: PyPI publishing uses `pypa/gh-action-pypi-publish` v1.14.3.
+  This is the first release published with it.
+- CI: CodeQL v4.39.1, Scorecard v2.5.0, ruff 0.17.2.
+
 ## 0.2.0 (2026-10-23)
 
 ### Added

@@ -15,7 +15,7 @@ from ._place import place
 from ._win32 import NotWindowsError, enable_dpi_awareness
 from .watcher import GapWatcher
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "Gap",
     "GapWatcher",
