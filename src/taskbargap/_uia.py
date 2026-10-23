@@ -64,19 +64,19 @@ _tls = threading.local()
 
 
 class _GUID(ctypes.Structure):
-    _fields_ = [("d1", ctypes.c_ulong), ("d2", ctypes.c_ushort),
-                ("d3", ctypes.c_ushort), ("d4", ctypes.c_ubyte * 8)]
+    _fields_ = (("d1", ctypes.c_ulong), ("d2", ctypes.c_ushort),
+                ("d3", ctypes.c_ushort), ("d4", ctypes.c_ubyte * 8))
 
 
 class _VariantUnion(ctypes.Union):
-    _fields_ = [("bstr", ctypes.c_void_p), ("parray", ctypes.c_void_p),
-                ("ll", ctypes.c_longlong)]
+    _fields_ = (("bstr", ctypes.c_void_p), ("parray", ctypes.c_void_p),
+                ("ll", ctypes.c_longlong))
 
 
 class _VARIANT(ctypes.Structure):
     _anonymous_ = ("u",)
-    _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort),
-                ("r3", ctypes.c_ushort), ("u", _VariantUnion)]
+    _fields_ = (("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort),
+                ("r3", ctypes.c_ushort), ("u", _VariantUnion))
 
 
 class _Com:
@@ -188,8 +188,7 @@ def _cached_rect(com: _Com, element) -> tuple[int, int, int, int] | None:
             aut.SafeArrayUnaccessData(var.parray)
         if width <= 0 or height <= 0:
             return None
-        return (int(round(left)), int(round(top)),
-                int(round(left + width)), int(round(top + height)))
+        return round(left), round(top), round(left + width), round(top + height)
     finally:
         aut.VariantClear(ctypes.byref(var))
 

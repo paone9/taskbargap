@@ -1,10 +1,9 @@
 """Find the empty span of the taskbar: `Shell_TrayWnd` -> tray edge, button edge."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import threading
 import time
+from dataclasses import dataclass
 
 from . import _uia, _win32
 from ._geometry import (

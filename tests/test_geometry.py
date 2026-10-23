@@ -2,11 +2,11 @@
 import pytest
 
 from taskbargap._geometry import (
-    choose_span,
-    free_spans,
     ALIGNMENTS,
+    choose_span,
     estimate_button_edge,
     fit,
+    free_spans,
     gap_span,
     is_on_taskbar,
     strip_can_hold,

@@ -199,8 +199,7 @@ def free_spans(
     for il, ir in occupied:
         if il > cursor:
             spans.append((cursor, il))
-        if ir > cursor:
-            cursor = ir
+        cursor = max(cursor, ir)
     if right > cursor:
         spans.append((cursor, right))
     return spans

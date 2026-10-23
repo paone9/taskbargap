@@ -4,7 +4,7 @@ All notable changes to `taskbargap`. Versions follow [semantic
 versioning](https://semver.org), with the pre-1.0 caveat that the API can still
 change between minor versions.
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-23)
 
 ### Added
 
