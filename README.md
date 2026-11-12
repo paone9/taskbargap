@@ -74,7 +74,7 @@ when an app wants to get out of the way.
 | `place(hwnd, *, align="right", margin=12, min_width=160, width=None, height=None, gap=None, nonblocking=False) -> bool` | Size and position an existing window inside the gap as a top-most tool window. `width` defaults to filling the gap, `height` to the taskbar's own height. False means it did nothing: no gap, `min_width` didn't fit, or Windows refused the move. |
 | `GapWatcher(hwnd, *, align, margin, min_width, width, height, interval=1.0, on_change=None)` | Background watcher that keeps the window fitted and top-most as the taskbar changes. `.start()` / `.stop() -> bool`, or use it as a context manager. |
 | `enable_dpi_awareness() -> bool` | Opt into per-monitor-v2 DPI awareness. Falls back gracefully on old Windows. |
-| `taskbar_items() -> list[tuple[int, int, int, int]] \| None` | The screen rects (physical px) of every button the Windows 11 taskbar draws: Start, Search, Task View, each app, Widgets. `None` off Windows 11 or when the shell isn't answering. This is what `find_gap()` measures against; exposed so you can show *why* the gap is where it is. |
+| `taskbar_items() -> list[tuple[int, int, int, int]] \| None` | The screen rects (physical px) of every button the Windows 11 taskbar draws: Start, Search, Task View, each app, Widgets. `None` on Windows 10, Server or a replacement shell, or when the shell isn't answering; raises `NotWindowsError` off Windows. This is what `find_gap()` measures against; exposed so you can show *why* the gap is where it is. |
 | `Gap` | Frozen dataclass: `left, right, top, bottom` (physical px), `scale` (DPI factor), `monitor` (HMONITOR), `measured`, plus `width` / `height`. |
 | `NotWindowsError` | Raised by any Win32 call when you're not on Windows. |
 
@@ -140,7 +140,7 @@ only in per-monitor mode that you get real screen pixels and an unscaled window.
   `measured=False`. A plausible edge that leaves no room is respected: a genuinely
   full taskbar returns `None`, because inventing a gap there would cover buttons.
 - **Primary taskbar only.** Secondary monitors get their own
-  `Shell_SecondaryTrayWnd` bars, and v0.1 reads the primary `Shell_TrayWnd`. The
+  `Shell_SecondaryTrayWnd` bars, and taskbargap reads only the primary `Shell_TrayWnd`. The
   gap you get is on whichever monitor that taskbar is on, at that monitor's DPI.
 - **Horizontal taskbars only.** A taskbar docked left or right, which Windows 10
   allows, has no horizontal gap worth speaking of, so `find_gap()` returns `None`

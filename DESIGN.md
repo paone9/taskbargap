@@ -6,7 +6,7 @@ reuse it. The hard parts had already been proven in a real application before th
 package existed, which is why the detection and placement paths are more careful
 than a first draft would be.
 
-**Status:** v0.1.1 on PyPI, alpha. The API can still change inside 0.x.
+**Status:** v0.2.1 on PyPI, alpha. The API can still change inside 0.x.
 
 ## The problem being solved
 
@@ -48,7 +48,8 @@ decides where a window goes can be tested on any machine.
 
 ```
 src/taskbargap/
-  __init__.py     public API: find_gap, place, GapWatcher, enable_dpi_awareness, Gap
+  __init__.py     public API: find_gap, place, GapWatcher, enable_dpi_awareness,
+                  taskbar_items, Gap, NotWindowsError
   _geometry.py    pure arithmetic (no ctypes): gap span, aligned fit
   _win32.py       ctypes bindings, RECT/MONITORINFO, small helpers
   _uia.py         ctypes-only COM client for the Win11 taskbar's UI Automation tree
@@ -71,13 +72,15 @@ than aspirational, and it keeps the ctypes modules down to Win32 plumbing.
   `Shell_TrayWnd`, no usable span, or a vertically docked taskbar. Callers can
   treat "no gap" as a normal state. Off Windows it raises `NotWindowsError`, since
   the library should not pretend a Linux desktop is just a machine with no gap.
-- **`Gap.measured`** is `True` only when the app-button edge was read from a real
-  window *and* survived corroboration against the number of windows that must own
-  a button. `False` means the edge is a guess, whether from the 30% heuristic or
-  from a reported rect that failed corroboration. `False` is not a warning that
-  the edge is unsafe and `True` is not a promise that it is safe: it says which
-  of the two the library is handing you. A guessed edge can still overlap
-  buttons, because on Windows 11 there is nothing dependable to measure.
+- **`Gap.measured`** is `True` when the span was read from what the taskbar
+  actually draws: on Windows 11, every button's rectangle from the taskbar's UI
+  Automation tree; otherwise (Windows 10, or when UI Automation gives no answer),
+  the app-button strip's window, and only if that reading survived corroboration
+  against the number of windows that must own a button. `False` means the edge
+  is a guess, whether from the 30% heuristic or from a reported rect that failed
+  corroboration. `False` is not a warning that the edge is unsafe and `True` is
+  not a promise that it is safe: it says which of the two the library is handing
+  you. A guessed edge can overlap buttons.
 - **`place()`** never widens past the gap. If `min_width` doesn't fit it returns
   `False` and does nothing, leaving the caller to decide whether to hide, because
   that is policy.
@@ -273,13 +276,13 @@ What has actually been validated, and where:
 | Watcher against a never-pumping UI thread | keeps ticking. Verified to fail without the async fix |
 | Explorer killed under a running watcher | forced for real (`tests/test_explorer_restart.py`): `find_gap()` never raised, never reported a confident gap at the Start button, and returned `None` for the outage. The taskbar came back as a different window (65874 to 132334) and the watcher re-fitted to it (window 800 to 877 px) with no error |
 | Stock Windows 11 build 26200, both taskbar alignments | button edge measured correctly either way: left-aligned gap starts at 865, centred at 2121, matching the visible cluster in a screenshot. No shell replacement is installed, checked for ExplorerPatcher, StartAllBack and Start11, and for third-party DLLs in `explorer.exe` |
-| UI Automation path, Windows 11 26200, 3840×2160 at 175%, left-aligned, 17 buttons | `taskbar_items()` matches the .NET `UIAutomationClient` wrapper rectangle for rectangle (Start 0..96, apps to 1328, Widgets 3075..3341 beside the clock at 3397). `find_gap()` returns 1405..3075 `measured=True` where 0.1.1 returned 846..1945 (logical) over Widgets. Fresh reading 20-30ms, cached 1-2ms. The live test `test_the_gap_covers_no_drawn_button` asserts the no-overlap property on whatever the machine's bar holds. Also passes on GitHub's `windows-2025` runners in strict mode, where an unreadable taskbar fails instead of skipping. Centred layout and Windows 10 fallback: **unit-tested with a stand-in shell, not yet run live** |
+| UI Automation path, Windows 11 26200, 3840×2160 at 175%, left-aligned, 17 buttons | `taskbar_items()` matches the .NET `UIAutomationClient` wrapper rectangle for rectangle (Start 0..96, apps to 1328, Widgets 3075..3341 beside the clock at 3397). `find_gap()` returns 1405..3075 `measured=True` where 0.1.1 returned 846..1945 (logical) over Widgets. Fresh reading 20-30ms, cached 1-2ms. The live test `test_the_gap_covers_no_drawn_button` asserts the no-overlap property on whatever the machine's bar holds. Also passes on GitHub's `windows-latest` runners (Windows Server 2025) in strict mode, where an unreadable taskbar fails instead of skipping. Centred layout and Windows 10 fallback: **unit-tested with a stand-in shell, not yet run live** |
 | The 30% heuristic fallback | **never exercised on a real machine**, only in unit tests and by injecting dead rects. Stock Win11 and Win10 both host the legacy button windows, so reaching this path takes a shell that doesn't |
 | Windows 10 | **not validated**, though it is the layout the measured path was written against |
 | Mixed-scale monitors, both directions, three layouts: 175%+100%, 125%+200%, 200%+150% | **validated**, and it exercised the case the rule exists for. Primary detection and placement are unaffected in every layout, across three real taskbar row heights (60px at 125%, 84px at 175%, 96px at 200%), which is the row height the library sizes windows to. The divergence shows up on the secondary bar, whose monitor differs from the system DPI. At 175%+100% a system-aware process is shown `(6720, 3696, 13440, 3780)`, the real 3840px edge stretched into 175% space, where `GetDpiForWindow` answers 96 and the naive 1.0 divisor leaves 6720 instead of 3840. At 125%+200% it runs the other way: the same bar appears as `(3840, 1290, 6240, 1350)`, squeezed by 0.625, with `GetDpiForWindow` answering 192 against a system 1.25. The rule returns the system factor both times. Regression test: `test_scale_ignores_the_monitor_dpi_when_the_process_cannot_use_it`, which self-skips on same-scale machines |
 | Auto-hide taskbar | **not validated**. The gap follows the bar off-screen by design, but that is untested |
-| GitHub `windows-latest` runners, Python 3.10 and 3.13 | a second, independent Windows machine. The full shell suite passes in strict mode (20 passed, 1 skipped for having no secondary taskbar). Detection, placement, ex-styles, the watcher and all three DPI modes are exercised on hardware that isn't the author's |
-| Linux | `ubuntu-latest` in CI (44 passed, 22 Windows-only skipped), reproduced locally under WSL on Python 3.12. It imports, never binds user32, raises `NotWindowsError` rather than pretending, and the geometry gives byte-identical answers to Windows |
+| GitHub `windows-latest` runners, Python 3.10 and 3.13 | a second, independent Windows machine. The full shell suite passes in strict mode (23 passed, 2 skipped: no secondary-monitor taskbar, and no monitor at a different scale from the system DPI). Detection, placement, ex-styles, the watcher and all three DPI modes are exercised on hardware that isn't the author's |
+| Linux | `ubuntu-latest` in CI (94 passed, 26 Windows-only skipped, as of 0.2.1); an earlier version of the suite was also reproduced locally under WSL on Python 3.12. It imports, never binds user32, raises `NotWindowsError` rather than pretending, and the geometry gives byte-identical answers to Windows |
 | macOS | **not tested**, and not supported. The package raises `NotWindowsError` there |
 
 Two failure modes were found by mutation-testing the guards, that is by removing

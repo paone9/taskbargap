@@ -10,7 +10,7 @@ Maintenance release. No library code changes.
 
 - Release tooling: PyPI publishing uses `pypa/gh-action-pypi-publish` v1.14.3.
   This is the first release published with it.
-- CI: CodeQL v4.39.1, Scorecard v2.5.0, ruff 0.17.2.
+- CI: CodeQL v4.39.1, Scorecard v2.5.0, `actions/upload-artifact` v7.0.2, ruff 0.17.2.
 
 ## 0.2.0 (2026-10-23)
 

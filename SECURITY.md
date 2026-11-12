@@ -2,24 +2,33 @@
 
 `taskbargap` is a small local library. It measures the Windows taskbar and moves a
 window you give it. This page spells out exactly what it touches so you, or your
-security team, can review it quickly. It is about 1,100 lines of plain Python
+security team, can review it quickly. It is about 1,450 lines of plain Python
 across seven modules with no dependencies at all, just the standard library
-(`ctypes`, `dataclasses`, `logging`, `sys`, `threading`, `time`, `typing`). No
-binaries, no obfuscation, nothing to unpack.
+(`collections.abc`, `ctypes`, `dataclasses`, `logging`, `sys`, `threading`,
+`time`). No binaries, no obfuscation, nothing to unpack.
 
 ## What it reads
 
-Everything goes through `ctypes`, on handles the library loads for itself rather
-than mutating the process-wide `ctypes.windll`. The Win32 reads are all in
-`user32.dll`:
+Everything goes through `ctypes`. `user32`, `ole32` and `oleaut32` are loaded as
+the library's own `WinDLL` handles, so the prototypes it sets never leak into the
+process-wide `ctypes.windll`. The one exception is `DwmGetWindowAttribute`, called
+through `ctypes.windll.dwmapi` with explicitly typed arguments and no prototype
+set, so nothing about that shared handle changes either. The Win32 reads:
 
 - Finding the taskbar: `FindWindowW` and `FindWindowExW`, which locate
   `Shell_TrayWnd` and its children (the tray cluster and the app-button strip) by
   window class.
-- Measuring: `GetWindowRect`, `MonitorFromWindow`, `GetMonitorInfoW`.
+- Measuring: `GetWindowRect`, `MonitorFromWindow`. (`GetMonitorInfoW` sits in a
+  helper the package itself never calls; the test suite uses it.)
 - Checking a window is real: `IsWindow`, `IsWindowVisible`, `GetWindowLongW`.
 - DPI: `GetDpiForWindow`, `GetDpiForSystem`, `GetThreadDpiAwarenessContext`,
   `GetAwarenessFromDpiAwarenessContext`.
+- Estimating the button count where the taskbar can't be measured (Windows 10, or
+  when UI Automation gives no answer): `EnumWindows` over the top-level windows,
+  and for each one `IsWindowVisible`, `GetWindowLongW`, `GetWindow` (its owner),
+  `GetWindowTextLengthW` (whether it has a title, never the title itself) and
+  `dwmapi`'s `DwmGetWindowAttribute` (whether it is cloaked). This is the shell's
+  own rule for which windows get a taskbar button; only the count is kept.
 
 On Windows 11 it also reads the taskbar's accessibility tree, the one Narrator
 uses, through UI Automation (`_uia.py`). This is COM, driven directly through
@@ -28,15 +37,17 @@ uses, through UI Automation (`_uia.py`). This is COM, driven directly through
 (`SysAllocString`, `VariantClear`, `SafeArrayGetDim`, `SafeArrayGetUBound`,
 `SafeArrayAccessData`, `SafeArrayUnaccessData`), and on the automation object
 itself `ElementFromHandle` (of `Shell_TrayWnd`), `CreatePropertyCondition`,
-`CreateTrueCondition`, `CreateCacheRequest`, `FindFirst`, `FindAllBuildCache`,
-`GetCachedPropertyValue` and `Release`. It asks for exactly one property, the
-`BoundingRectangle` of each button in the taskbar frame. It does not ask for
-names, text, patterns or any element outside the taskbar, and it never invokes,
-focuses, or sets anything through UI Automation.
+`CreateTrueCondition`, `CreateCacheRequest`, `AddProperty`, `FindFirst`,
+`FindAllBuildCache`, `get_Length`, `GetElement`, `GetCachedPropertyValue` and
+`Release`. It finds the taskbar frame by its `ClassName` (a property condition)
+and reads one property of each button in it, the `BoundingRectangle`. It does not
+ask for names, text, patterns or any element outside the taskbar, and it never
+invokes, focuses, or sets anything through UI Automation.
 
-It reads window geometry. It does not read window contents, capture the screen,
-read other processes' memory, hook input, or enumerate what you have open beyond
-the taskbar's own child windows and the buttons the taskbar draws for them.
+It reads window geometry and the window attributes listed above. It does not
+read window titles or contents, capture the screen, read other processes' memory,
+or hook input. The button-count estimate does walk every top-level window, but
+keeps nothing from it except the count.
 
 ## What it changes
 
@@ -45,7 +56,10 @@ Only the window handle you pass in, and only with these calls:
 - `SetWindowLongW` applies `WS_EX_TOOLWINDOW | WS_EX_TOPMOST` and clears
   `WS_EX_APPWINDOW`, so your window has no taskbar button and no Alt-Tab entry.
 - `SetWindowPos` moves it, sizes it, and pins it to the top-most band.
-- `ShowWindow` and `ShowWindowAsync` show it without taking focus (`SW_SHOWNA`).
+- `ShowWindow` and `ShowWindowAsync` show it without taking focus (`SW_SHOWNA`),
+  and hide it (`SW_HIDE`) just before re-showing it after a style change, since
+  Windows only drops an existing taskbar button or Alt-Tab entry for a window that
+  is hidden across the change.
 
 The library never goes looking for windows to move. It acts on the `hwnd` you hand
 it and nothing else. If you hand it a window belonging to another process it will
@@ -63,8 +77,10 @@ never happen as a side effect of measuring or placing anything.
 Nothing. No files, no registry keys, no configuration, no logs, no auto-start
 entries, no temporary files. There is no data directory because there is no data.
 
-It emits records to a standard `logging` logger named `taskbargap` when Windows
-refuses an operation. It never installs a handler or opens a file. Where those
+It emits records to a standard `logging` logger named `taskbargap`: warnings
+when Windows refuses to restyle or place a window, or when the watcher thread
+doesn't stop in time, and debug records when UI Automation is unavailable or a
+read of the taskbar fails. It never installs a handler or opens a file. Where those
 records go, if anywhere, is entirely your application's logging configuration.
 
 ## What it never does
@@ -90,7 +106,8 @@ the shell afterwards either way.
 - Read it. Seven modules, no dependencies. `_win32.py` and `_uia.py` are the only
   files that talk to Windows, and everything in `_geometry.py` is pure arithmetic.
 - CI runs [`ruff`](https://github.com/astral-sh/ruff) and
-  [`bandit`](https://github.com/PyCQA/bandit) on every push, plus a
+  [`bandit`](https://github.com/PyCQA/bandit), and the tests on Ubuntu and Windows,
+  on every push to `main` and every pull request, plus a
   [CodeQL](https://codeql.github.com/) workflow analysing the Python and the
   workflow files. Results are on the Actions and Security tabs.
 - GitHub Actions are pinned to full commit SHAs. Dependabot bumps them and the
@@ -100,7 +117,8 @@ the shell afterwards either way.
   token is stored anywhere, and signed with [Sigstore](https://www.sigstore.dev/),
   with the `.sigstore` bundles attached to each GitHub Release.
 - To confirm there are no network calls, run
-  `grep -ri "socket\|urllib\|http\|requests" src/`. It returns nothing. Or put it
+  `grep -ri --include='*.py' "socket\|urllib\|http\|requests" src/`. It returns
+  nothing. Or put it
   behind a network monitor and watch.
 
 ## Reporting a problem
